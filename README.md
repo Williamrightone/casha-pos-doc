@@ -11,3 +11,8 @@ Pos 點餐系統: https://casha-pos.williamrightone.com
 
 用戶點餐系統: https://casha.williamrightone.com
 
+## 架構設計
+
+架構設計可參考:
+
+

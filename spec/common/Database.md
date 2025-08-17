@@ -1,9 +1,19 @@
 # SnowflakeId
 
-本專案 採用 Snowflake ID 唯一 ID 生成服務，基於 Twitter Snowflake 演算法改進實現。
+## Primary Key
 
-組成結構為:
-> [時間戳(42)] [數據中心ID(5)] [機器ID(5)] [序列號(12)]
+使用 Snowflake ID 來確保全局唯一且趨勢遞增，避免自增 ID 對分庫分表的限制；同時引入 shard_code 作為路由維度，應用層計算分片(ShardingSphere)，避免數據庫層 FK 造成瓶頸
+
+部分資料量較少的表格如 RBAC 相關則不使用分片
+
+| 1 bit |    41 bits    |   10 bits   |  12 bits   |
+| ------ | -------| -------| ------- |
+| 符號位 |  時間戳(ms)   | 機器ID      | 序列號      |
+
+> 起始時間 2025-07-22 00:00:00 UTC = 1753056000000
+> snowflake.atacenter-id=1 # 資料中心 ID (1~2) 
+> datacenter-id: 1   # 資料中心 ID (1~2 預設台北高雄各一台)
+> machine-id: 3      # 機器 ID (1~2 預設每個 DC 各一台 VM)
 
 ```java
 @Component
@@ -67,3 +77,30 @@ public class SnowflakeIdGenerator {
 
 }
 ```
+
+## Foreign Key
+
+在 MySQL 裡不強制設定 FK，而是應用層驗證，因為專案走微服務架構，避免 FK 造成分庫困難，避免寫入性能瓶頸。
+
+## JPA & Native Query
+
+簡單 CRUD 場景用 JPA，在大量聚合和批量計算場景，用 Native SQL
+
+## Flyway DB
+
+專案使用 Flyway DB, DB 命名為大寫 + 底線如 ```AUTH_DB```,  table 則是小寫 + 底線, 如 ```teble_info```
+
+在 Flyawy 的管理命名上:
+
+Version 從 1.0.0 開始, 每次更新尾數 +1, 經大版本則中間數 +1
+
+* 若更新 DDL, 須以 create, alter 開頭
+* 若更新 DML, 須以 insert 開頭
+
+```sql
+# V1.0.0__create_teble_casha_user.sql
+# V1.0.1__create_table_role.sql
+...
+# V1.0.6__alter_table_function_menu_add_column_permission_code.sql
+```
+
