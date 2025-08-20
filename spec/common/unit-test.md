@@ -13,6 +13,8 @@ domain service 的方法要囊括 Spec 內的 Scenario
 * common package 內的 untils 工具全部都需要測試, 但是不包含在 coverage 內。
 * gateway 的 config 不須測試, JwtFilter 則需要測試。
 
+在完成分支推送後, 請確保程式無 Major Issue, Code Coverage 於 Sonar 保持 80% 以上
+
 ## 範例
 
 ```xml
