@@ -8,14 +8,14 @@
 
 ![preview](/asset/casha-typo.png)
 
-## 顯上測試
+## 線上測試
 
 共分為四個操作平台:
 
-* 後台網站: https://casha-admin.williamrightone.com
-* Pos 點餐系統: https://casha-pos.williamrightone.com
-* 用戶點餐系統: https://casha-order.williamrightone.com
-* KDS: https://casha-kds.williamrightone.com
+* 後台網站: https://casha.williamrightone.com
+* Pos 點餐系統(尚未開放): https://casha-pos.williamrightone.com
+* 用戶點餐系統: https://casha-order.williamrightone.com/m/ou3u4zzulxfwhmit
+* KDS(尚未開放): https://casha-kds.williamrightone.com
 
 提供平台管理員維護, 餐廳與分店管理員配置, 員工與用戶點餐的功能。
 
