@@ -309,3 +309,159 @@ casha-order/
 | **cis (BFF)** | `visit:customers:{visitId}` | Set | 該訪次內所有 `customerToken` | 顧客加入訪次 `SADD`；滑動續期 | 預設 **8 小時**（可依需求改 `auto_close_minutes`） | 訪次關閉時**DEL**；否則 TTL 自動過期 | 建/更：`VisitBindingRedisAdapter.addCustomerToVisit / resolveByCustomerToken`；刪：訪次關閉；過期：Redis |
 | **cis (BFF)** | `cis:menu:active:v1:{branchId}` | String(JSON) | 有效菜單快取 | `/cis/menu/active` 緩存未命中後回源寫入 | 約 **3 分鐘**（含 jitter） | 新寫覆蓋或 TTL 自動過期 | 建/更：`FindMenuActiveUseCaseImpl.writeToCache`；過期：Redis |
 | **cis (BFF)** | `lock:cis:menu:active:v1:{branchId}` | String | 建菜單快取用的鎖（value=uuid） | 回源建快取前 `SET NX EX 3` | **3 秒** | 釋放鎖時 Lua 檢查 token 後 **DEL**；或 TTL 自動過期 | 建：`FindMenuActiveUseCaseImpl.acquireLock`；釋放：`FindMenuActiveUseCaseImpl.releaseLock` 或 Redis |
+
+```mermaid
+classDiagram
+
+class 餐廳 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +code: VARCHAR(12) (對外短碼（Base32/36 衍生，全域唯一）)
+  +name: VARCHAR(100) (餐廳名稱)
+  +tax_id: CHAR(8) (公司統一編號（台灣 8 碼；可為空）)
+  +is_active: TINYINT (是否啟用（1=啟用, 0=停用）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 分店 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +restaurant_id: BIGINT (所屬餐廳 ID)
+  +code: VARCHAR(16) (分店對外短碼（通常 = 餐廳碼 + 分店序號，如 AEJ1D91）)
+  +branch_no: INT (分店序號（同餐廳內遞增）)
+  +name: VARCHAR(100) (分店名稱)
+  +tax_id: CHAR(8) (分店統編（若分店有獨立稅籍）)
+  +phone: VARCHAR(30) (聯絡電話)
+  +address: VARCHAR(255) (地址)
+  +timezone: VARCHAR(64) (分店時區（IANA）)
+  +biz_day_start_hour: TINYINT (營業日換日小時（0~23）)
+  +visit_mode: ENUM (到店訪次模式：帶位/自動/不追桌)
+  +auto_close_minutes: INT (AUTO 模式無互動自動清桌分鐘數)
+  +is_active: TINYINT (是否啟用（1=啟用, 0=停用）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 單品分類 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +branch_id: BIGINT (分店 ID)
+  +name: VARCHAR(100) (分類名稱)
+  +sort_order: INT (排序序號（小到大）)
+  +is_active: TINYINT (是否啟用（1=啟用, 0=停用）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 單品 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +branch_id: BIGINT (分店 ID)
+  +category_id: BIGINT (分類 ID)
+  +name: VARCHAR(150) (單品名稱)
+  +base_price: DECIMAL(10,2) (基礎售價（可被菜單版本覆蓋）)
+  +image_object_key: VARCHAR(255) (MinIO 物件 Key（私有存取）)
+  +image_mime: VARCHAR(50) (圖片 MIME（image/jpeg 等）)
+  +image_updated_at: DATETIME (圖片更新時間（控制快取破壞）)
+  +is_active: TINYINT (是否啟用（1=啟用, 0=停用）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 菜單 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +branch_id: BIGINT (分店 ID)
+  +name: VARCHAR(100) (菜單名稱)
+  +is_active: TINYINT (是否啟用（1=啟用, 0=停用）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 菜單版本 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +menu_id: BIGINT (菜單 ID)
+  +version_no: INT (版本序號（遞增）)
+  +status: ENUM (版本狀態)
+  +date_start: DATE (生效起日（含）)
+  +date_end: DATE (生效迄日（含）)
+  +time_start: TIME (每日開始時間（分店時區）)
+  +time_end: TIME (每日結束時間（分店時區）)
+  +dow_mask: TINYINT (週期 bitmask：bit0=週一..bit6=週日；127=每日)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 菜單版本分類 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +menu_version_id: BIGINT (菜單版本 ID)
+  +category_id: BIGINT (分類 ID)
+  +sort_order: INT (排序序號)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 菜單版本單品 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +menu_version_id: BIGINT (菜單版本 ID)
+  +item_id: BIGINT (單品 ID)
+  +price: DECIMAL(10,2) (此版本售價（覆蓋 item.base_price）)
+  +daily_quota: INT (每日可售量上限（NULL 表不限量）)
+  +is_active: TINYINT (此版本下是否販售（1=販售, 0=停售）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 銷售配額計數器 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +stat_date: DATE (統計日期（依分店營業日）)
+  +branch_id: BIGINT (分店 ID)
+  +menu_version_item_id: BIGINT (菜單版本-單品 ID)
+  +slot_key: VARCHAR(16) (時段鍵（本版固定 ALL_DAY）)
+  +used_qty: INT (已使用數量)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 桌位資訊 {W
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +branch_id: BIGINT (所屬分店 ID)
+  +table_no: VARCHAR(20) (桌號（分店內唯一）)
+  +name: VARCHAR(50) (桌位顯示名稱（選填）)
+  +pos_x: INT (座位 X 座標（像素或格）)
+  +pos_y: INT (座位 Y 座標（像素或格）)
+  +width: INT (座位寬（格/像素）)
+  +height: INT (座位高（格/像素）)
+  +qr_token: VARCHAR(120) (掃碼用 Token（可重置）)
+  +status: VARCHAR(20) (桌位狀態（IDLE/IN_USE/OUT_OF_SERVICE）)
+  +is_active: TINYINT (是否有效（1=有效, 0=停用）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+class 訪次 {
+  +id: BIGINT (主鍵 ID（Snowflake）)
+  +branch_id: BIGINT (分店 ID)
+  +table_id: BIGINT (桌位 ID（可為空）)
+  +status: VARCHAR(20) (訪次狀態（OPEN/CLOSED）)
+  +party_size: INT (來客人數（選填）)
+  +opened_at: DATETIME (開桌時間)
+  +closed_at: DATETIME (結束時間（清桌）)
+  +biz_date: DATE (營業日（依分店換日規則）)
+  +created_at: DATETIME (建立時間)
+  +updated_at: DATETIME (更新時間)
+}
+
+餐廳 "1" -- "*" 分店 : "擁有"
+分店 "1" -- "*" 單品分類 : "擁有"
+分店 "1" -- "*" 單品 : "擁有"
+分店 "1" -- "*" 菜單 : "擁有"
+分店 "1" -- "*" 桌位資訊 : "擁有"
+分店 "1" -- "*" 訪次 : "發生於"
+單品分類 "1" -- "*" 單品 : "分類"
+菜單 "1" -- "*" 菜單版本 : "擁有版本"
+菜單版本 "1" -- "*" 菜單版本分類 : "包含分類"
+菜單版本 "1" -- "*" 菜單版本單品 : "包含單品"
+菜單版本分類 "1" -- "1" 單品分類 : "對應到"
+菜單版本單品 "1" -- "1" 單品 : "對應到"
+銷售配額計數器 "1" -- "1" 菜單版本單品 : "統計"
+桌位資訊 "1" -- "*" 訪次 : "用於"
+
+note for 菜單版本 "版本狀態：DRAFT（草稿）, SCHEDULED（已排程）, ACTIVE（生效中）, ARCHIVED（已歸檔）"
+note for 分店 "到店訪次模式：ATTENDED（帶位）, AUTO（自動）, DISABLED（不追桌）"
+```
