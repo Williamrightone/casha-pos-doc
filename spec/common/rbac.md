@@ -170,3 +170,5 @@ note for 角色 "角色作用範圍需匹配:
 • RESTAURANT級角色 → 餐廳管理員
 • BRANCH級角色 → 分店管理員"
 ```
+
+> 推薦下一篇: [菜單設置與快取機制](/spec/usecase/menu.md) 

@@ -117,3 +117,5 @@ Rel(grafana, es, "查詢日誌數據", "HTTP 9200")
 
 @enduml
 ```
+
+> 推薦下一篇: [專案目錄結構](/archite/folder-structure.md)

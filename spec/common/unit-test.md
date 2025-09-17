@@ -82,3 +82,5 @@ domain service 的方法要囊括 Spec 內的 Scenario
 
 </project>
 ```
+
+> 推薦下一篇: [RBAC](/spec/common/rbac.md)

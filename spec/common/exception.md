@@ -132,3 +132,5 @@ public class BffExceptionHandler {
 1. 統一響應格式：所有異常轉換為標準的 ApiResponse
 2. 錯誤分類處理：不同類型異常可採用不同處理邏輯
 3. 錯誤日誌記錄：可集中處理錯誤日誌記錄和監控
+
+> 推薦下一篇: [Unit Test](/spec/common/unit-test.md)

@@ -321,3 +321,4 @@ sequenceDiagram
     Order->>RabbitMQ: Publish order.canceled
     Order->>Store: (流程同上方的取消路徑，釋放庫存)
 ```
+

@@ -31,3 +31,5 @@ git add .
 git commit -m "feat: implement my feature"
 git push -u origin feature/my-feature
 ```
+
+> 推薦下一篇: [DB](/spec/common/Database.md)

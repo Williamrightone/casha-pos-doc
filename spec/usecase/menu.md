@@ -326,3 +326,5 @@ public class FindMenuActiveUseCaseImpl implements FindMenuActiveUseCase {
     }
 }
 ```
+
+> 推薦下一篇: [點餐與付款 API](/spec/usecase/order.md)

@@ -104,3 +104,4 @@ Version 從 1.0.0 開始, 每次更新尾數 +1, 經大版本則中間數 +1
 # V1.0.6__alter_table_function_menu_add_column_permission_code.sql
 ```
 
+> 推薦下一篇: [異常處置](/spec/common/exception.md)

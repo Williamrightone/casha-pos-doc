@@ -49,11 +49,6 @@ public interface AuthPermissionClient {
 }
 ```
 
-**Biz Controller**
-
-
-
-
 ## 依賴的方向
 
 **BFF**
@@ -64,16 +59,6 @@ Controller -> UseCase -> UseCaseImpl -> FeignClient
 
 Controller -> UseCase -> UseCaseImpl -> Repository or Domain Service
 
-## Common Package
-
-專案的
-
-**SHARED-COMMON**
-
-**BFF-COMMON**
-
-**BIZ-COMMON**
-
 **Service-Contract**
 
 每一個 biz-service 對應一個 contract, 如 auth-service 對應 auth-contract。
@@ -81,7 +66,82 @@ Controller -> UseCase -> UseCaseImpl -> Repository or Domain Service
 內容包含 AuthFeignClient、LoginRequest、UserInfoDTO 等，僅與 auth 服務相關。
 bff 依賴它來調用 auth 服務。
 
-
 ## 結構
 
+```
++---admin-portal
+|   +---src
+|   |   +---main
+|   |   |   +---java
+|   |   |   |   \---com
+|   |   |   |       \---casha
+|   |   |   |           \---admin
+|   |   |   |               +---application
+|   |   |   |               |   +---controller
+|   |   |   |               |   +---dto
+|   |   |   |               |   |   +---branch
+|   |   |   |               |   |   +---category
+|   |   |   |               |   |   +---function
+|   |   |   |               |   |   +---item
+|   |   |   |               |   |   +---menu
+|   |   |   |               |   |   +---menuversion
+|   |   |   |               |   |   +---permission
+|   |   |   |               |   |   +---restaurant
+|   |   |   |               |   |   +---role
+|   |   |   |               |   |   \---seat
+|   |   |   |               |   \---usecase
+|   |   |   |               |       +---branch
+|   |   |   |               |       +---category
+|   |   |   |               |       +---function
+|   |   |   |               |       +---item
+|   |   |   |               |       +---menu
+|   |   |   |               |       +---menuversion
+|   |   |   |               |       +---permission
+|   |   |   |               |       +---restaurant
+|   |   |   |               |       +---role
+|   |   |   |               |       \---seat
+|   |   |   |               +---domain
+|   |   |   |               |   +---exception
+|   |   |   |               |   +---model
+|   |   |   |               |   +---port
+|   |   |   |               |   \---usecase
+|   |   |   |               |       +---branch
+|   |   |   |               |       +---category
+|   |   |   |               |       +---function
+|   |   |   |               |       +---item
+|   |   |   |               |       +---menu
+|   |   |   |               |       +---menuversion
+|   |   |   |               |       +---permission
+|   |   |   |               |       +---restaurant
+|   |   |   |               |       +---role
+|   |   |   |               |       \---seat
+|   |   |   |               \---infrastructure
+|   |   |   |                   +---adapter
+|   |   |   |                   +---client
+|   |   |   |                   |   +---config
+|   |   |   |                   |   \---feign
+|   |   |   |                   \---config
+|   |   |   \---resources
+|   |   \---test
+|   |       +---java
+|   |       |   \---com
+|   |       |       \---casha
+|   |       |           \---admin
+|   |       |               +---domain
+|   |       |               |   \---usecase
+|   |       |               |       +---branch
+|   |       |               |       +---category
+|   |       |               |       +---function
+|   |       |               |       +---item
+|   |       |               |       +---menu
+|   |       |               |       +---menuversion
+|   |       |               |       +---permission
+|   |       |               |       +---restaurant
+|   |       |               |       +---role
+|   |       |               |       \---seat
+|   |       |               \---infrastructure
+|   |       |                   \---adapter
+|   |       \---resources
+```
 
+> 推薦下一篇: [開發流程](/spec/development.md)
