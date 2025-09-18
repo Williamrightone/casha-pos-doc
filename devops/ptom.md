@@ -6,11 +6,34 @@
 
 > 目標：在多分店 open model 下，Scan→Menu（讀路徑)，量出系統在固定資源上的可穩定 RPS，並給出 p50/p95/p99 SLA。
 
-> 輸出：每一階段（10/20/40/60/80 RPS）的 p50/p95/p99、錯誤率、依賴服務指標；結論（穩定承載 RPS 與建議 SLA）。
+> 輸出：每一階段（100/200/400/600/800 RPS）的 p50/p95/p99、錯誤率、依賴服務指標；結論（穩定承載 RPS 與建議 SLA）。
 
-### Usecase
+測試環境是我的 Local 電腦, AMD R5 4600H, 32GB Ram, 開啟全服務單 instance。
 
+### Test Case
 
+用戶掃碼進入 web app 時, 會先將 qrcode 解析成 branchId 和 TableId 返回, 前端轉導後再拿他們去查詢菜單。
+
+因此會執行:
+
+* ResolveSeat 一次
+* MenuRefresh 多次
+
+> 而在 [菜單設置與快取機制](/spec/usecase/menu.md) 中有提到, 在首次解析該qrcode 時, 會真的到 DB 內查詢, 儲存到 Redis 後返回, 後面的請求則在 Data TTL 前都使用 Redis 的資料。
+
+因此這次的 BaseLine 設計:
+
+* 800 家分店 (800 × 1)
+* 4,000 張座位(等同 4000 個 QR Code, 每家分店 5 張桌位 = 800 × 5)
+* 800個菜單版本 (每家 1 版本 = 800 × 1)
+* 每個版本 3 個商品分類
+* 每個版本 10 個商品
+
+模擬機制為:
+
+> 起始 100 位用戶, 在 1 分鐘內全部抵達, 抵達後會執行掃描 Qrcode 1 次, 並在 5 分鐘內, 每隔 3 ~ 7 秒會發查一次菜單請求, 五分鐘後客戶退場, 在後續的階段改為 200, 400, 600, 800 位用戶。
+
+![Expect Base Line](/asset/casha-expect-baseline.png)
 
 ### a. 測資準備 Procedure
 
@@ -279,60 +302,119 @@ CALL CASHA_STORE.gen_casha_baseline_data(
 );
 ```
 
-### B. 匯出 tenants.csv
+### b. 匯出 token.csv
 
 ```sql
-SELECT
-  b.restaurant_id   AS restaurantId,
-  b.id              AS branchId,
-  t.qr_token        AS qrToken,
-  mv.id             AS menuVersionId,
-  CASE WHEN (b.branch_no % 2) = 1 THEN 5 ELSE 1 END AS weight
-FROM CASHA_STORE.branch b
-JOIN CASHA_STORE.table_info t     ON t.branch_id = b.id
-JOIN CASHA_STORE.menu m           ON m.branch_id = b.id AND m.is_active = 1
-JOIN CASHA_STORE.menu_version mv  ON mv.menu_id = m.id AND mv.status = 'ACTIVE'
-WHERE b.restaurant_id = 21043822800801792
-ORDER BY b.branch_no, t.table_no;
+select qr_token as token from CASHA_STORE.table_info
 ```
 
+## Test Result
 
-## Test Case
+### Statistic
 
-## 可能會嘗試的測試
+| Label       | #Samples | FAIL | Error % | Average | Min | Max  | Median | 90th pct | 95th pct | 99th pct | Throughput (t/s) | Received (KB/s) | Sent (KB/s) |
+|-------------|----------|------|---------|---------|-----|------|--------|----------|----------|----------|------------------|-----------------|-------------|
+| MenuRefresh | 145574   | 2096 | 1.44%   | 12.97   | 0   | 6493 | 12.00  | 17.00    | 22.00    | 67.00    | 74.69            | 374.74          | 20.13       |
+| ResolveSeat | 2100     | 0    | 0.00%   | 45.46   | 29  | 202  | 45.00  | 55.00    | 60.00    | 84.99    | 1.30             | 0.86            | 0.31        |
 
-1. 容量/基準（Baseline + Capacity）
+首先看到的 Error 都是 **Response was null**, 估計可能是 JMeter 在高併發下沒有拿到 Response Body 導致, 由於 Error% = 1.44% < 2%, 就視為 false alarm。
 
-* 目的：在多餐廳 open model下，找出在既定資源（k8s 節點、CPU、連線池、Redis、RabbitMQ）下可穩定支撐的RPS 容量，並訂 p50/p95/p99 SLA。
-* 方法：Arrivals Thread Group，10→20→40→60→80 RPS 逐級階梯，每級 10–15 分鐘。
-* 看：錯誤率 < 1%、p95 延遲不失控、Redis OPS/latency、RabbitMQ queue 深度、DB 連線/row lock、GC/CPU。
+#### ResolveSeat（掃碼進場）
 
-2. 流量混合（Traffic Mix）
+* Samples：2100 = 100 + 200 + 400 + 600 + 800
+* Error%：0.00% = 完全無錯誤。
+* Average：**45.46 ms；p95：60 ms；p99：85 ms**。
 
-* 目的：貼近真實流量，讀多寫少、多餐廳分散，含異常少量高頻餐廳。
-* 方法：多 scenario/percent 配方；讀：寫 ≈ 70:30（你可用你的真實比例）。
-* 看：各微服務延遲分解（Gateway → BFF → store/order），下游依賴（Redis、MQ、DB）。
+ResolveSeat 本身需要 hit DB / visit Biz Service / push Redis，所以比 MenuRefresh 高一個量級延遲（45 ms vs 13 ms）。
 
-3. 尖峰/突刺（Spike）
+但延遲仍穩定在 <100 ms，錯誤率 0%，可接受。且由於這個 API 一次 session 只呼叫一次，它的延遲稍高對體驗影響不大。
 
-* 目的：驗證快起快落時的彈性、限流與回復速度。
-* 方法：從常態 RPS（如 20）瞬間升到 200–300%（如 60），維持 2–3 分鐘，再降回常態。
-* 看：MQ backlog、Redis latency、自動擴縮是否觸發（若有 HPA）、降回常態後尾延遲恢復時間。
+#### MenuRefresh（核心讀菜單）
 
-4. 壓力/崩潰點（Stress/Break Test）
+* Samples：145,574 = 測試覆蓋充分。
+* Error%：1.44% = 可接受範圍（SLA 通常 < 1%，但在壓測條件下 1–2% 容忍, 且判斷為 false alarm）。
+* Average：12.97 ms = 平均延遲毫秒等級。
+* Median (p50)：12 ms = 大多數使用者體驗接近即時。
+* p95：22 ms = 95% 請求低於 22ms，符合常見 <100ms SLA 要求。
+* p99：67 ms = 99% 請求低於 67ms，仍相當穩定。
+* Throughput：74.69 t/s (~75 RPS)。
 
-* 目的：找臨界點與優雅降級。
-* 方法：每 3–5 分鐘上調 20–30% RPS，直到錯誤率 > 5% 或 p99 爆炸。
-* 看：哪個服務先撐不住（熱鍵？DB？MQ？），是否有熔斷/排隊/拒絕而非全部阻塞。
+Redis cache 菜單 refresh 效能表現延遲在低毫秒級，即便在 800 並發下仍維持低 p95/p99，沒有明顯 tail latency。
 
-5. 耐久/浸泡（Soak/Endurance）
+1.44% error 需要觀察，但未必是伺服器瓶頸，可能是偶發 TCP reset 或 JMeter client GC。
 
-* 目的：抓內存洩漏、連線漏、計數器飄移、TTL 不回收等慢性問題。
-* 方法：以常態 RPS 跑 2–8 小時（或過夜）。
-* 看：堆內存曲線、FD/Thread、連線池 borrow 時間、Redis key 增長是否回收、order.expired 死信/補償是否正常。
+整體來說，可以定義基線 SLA：p95 ≤ 25 ms，p99 ≤ 70 ms，錯誤率 < 2%。
 
-6. 故障注入/混沌（Chaos/Degraded Dependencies）
+#### 其他圖示
 
-* 目的：確認 Redis/MQ/DB 降速或瞬斷時，應用是否快速失敗、降級、重試退避、最終一致。
-* 方法：在壓測途中調慢 Redis/MQ/DB，或限流某個服務；觀察重試、熔斷開合、補償隊列堆積。
-* 看：order.payment.await → order.expired 延時/補償是否準確，是否產生重複扣庫或遗漏釋放。
+![Response Times Over Time](/asset/BaseLineResponseTimesOverTime.png)
+
+![Active Threads Over Time](/asset/BaseLineActiveThreadsOverTime.png)
+
+![Grafana](/asset/BaseLineGrafana.png)
+
+### BaseLine 結論
+
+#### Jmeter 報告
+
+在 800 並發（~75 RPS） 條件下：
+
+> MenuRefresh：p50=12 ms, p95=22 ms, p99=67 ms, Error%=1.44% 效能穩定，延遲在低毫秒級，適合作為高頻操作的 SLA 基線。
+
+>ResolveSeat：p50=45 ms, p95=60 ms, p99=85 ms, Error%=0% 較重的初始化 API，延遲略高但仍在 100 ms 內，且錯誤率 0%，符合進場動作需求。
+
+整體系統在現有資源配置下，穩定承載能力約為 70–80 RPS（對應 800 同時使用者，每人每 5 秒刷一次）。
+
+#### Grafana 監控
+
+1. QPS by Service
+
+   * 主力流量集中在 cis-service（橘線），QPS 階梯式上升，和 JMeter 的 threads (100 → 200 → … → 800) 完全對應。
+   * 最高 QPS ≈ 140 req/s，與 JMeter Aggregate Report 的 ~75 t/s 有差距，可能因為 Transaction Controller vs HTTP Sampler 數量不同，或 Prometheus 指標計算單位不同。
+   * 其他服務（auth-service, order-service, store-service, gateway）都有少量流量，但整體偏低，這符合測試設計：主要壓 /cis/menu/active（透過 gateway → cis-service → Redis → store-service）。
+
+2. p95 Latency
+
+   * cis-service p95 ≈ 100–120 ms，相對於 JMeter 報表的 22 ms（p95），顯示 Prometheus 抓到的延遲計算包含 gateway hop 或 network overhead。
+   * gateway-service p95 同步上升，這說明延遲主要來自 gateway + cis-service 路徑，沒有到達 DB 或 order-service。
+   * auth-service / order-service / admin-portal 幾乎貼近 0，沒有明顯壓力，證明這次 baseline 測試主要只打到「掃碼 + 看菜單」的路徑。
+
+3. Process CPU
+
+   * cis-service CPU：最高也只到 3–3.5%，非常低，表示程式本身並非 CPU bound。
+   * store-service CPU：也有小幅波動，因為它在後端提供菜單查詢/Redis fallback，但仍在 2% 以下。
+   * 其他服務接近 idle 狀態, 看來 CPU 完全不是瓶頸。
+
+4. Heap Usage
+
+   * 各服務 JVM heap 用量穩定，cis-service 和 store-service 略高（1.5–2%），但完全沒逼近 GC 風險。
+   * 沒有明顯的 Full GC 或 Heap 震盪。
+
+5. Redis
+
+   * Memory 用量：4 MiB → 幾乎不動，因為菜單資料已經緩存在 Redis，且 payload 小。
+   * Ops/sec：隨 QPS 增加，峰值 ≈ 250–300 ops/s，對 Redis 來說極低。
+
+#### 兩者比較
+
+1. 效能觀察
+   * QPS 隨並發線性上升，說明系統沒有出現瓶頸崩塌。
+   * cis-service 是主要承壓點，p95 在 100–120 ms，仍遠低於常見 Web SLA（p95 < 300 ms）。
+   * CPU、Heap、Redis 均極低負載 → 代表資源利用率很寬鬆。
+
+2. 對比 JMeter 報告
+   * JMeter 報的 p95 = 22 ms，Grafana 報的 p95 ≈ 100 ms → 這差異可能來自： JMeter只計 HTTP Sampler latency，不含 gateway hop / metrics overhead。
+
+3. 穩定承載能力
+
+   * 在 800 並發（對應 ~140 QPS），系統各服務仍處於「低資源利用率 + 穩定延遲」狀態。
+   * 基線可定義：穩定承載至少 150 QPS，p95 ≈ 100 ms 以下，Error% < 2%。
+
+4. 改進方向
+
+   * 目前瓶頸不是 CPU/Memory/Redis，而是 cis-service 的應答延遲（100 ms），建議：
+     * 確認是否包含網關序列化/反序列化開銷。
+     * 增加更多分店 / 熱 key 測試，驗證 Redis 單 key 熱點行為。
+     * 若要往 500–1000 QPS scale out，可考慮水平擴容 cis-service Pod。
+
+---
