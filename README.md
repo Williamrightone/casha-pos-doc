@@ -35,3 +35,4 @@
 4. [RBAC](/spec/common/rbac.md)
 5. [菜單設置與快取機制](/spec/usecase/menu.md)
 6. [點餐與付款 API](/spec/usecase/order.md)
+7. [監控與壓力測試](/devops/ptom.md)

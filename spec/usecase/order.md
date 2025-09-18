@@ -322,3 +322,4 @@ sequenceDiagram
     Order->>Store: (流程同上方的取消路徑，釋放庫存)
 ```
 
+> 推薦下一篇: [監控與壓力測試](/devops/ptom.md)
