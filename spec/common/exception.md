@@ -133,4 +133,49 @@ public class BffExceptionHandler {
 2. 錯誤分類處理：不同類型異常可採用不同處理邏輯
 3. 錯誤日誌記錄：可集中處理錯誤日誌記錄和監控
 
+## FeignException 的處置
+
+微服務間使用 Feign 拋出自定義錯誤, 上游端會收到 FeignException, 此時會需要自行編寫 try catch 處理 Error。
+
+舉例確認訂單發現庫存不足 Cis Service -> Order Service:
+
+```java
+// 下游 Order Service 拋出 INSUFFICIENT_STOCK
+// Error Code: OD00007
+throw new OrderServiceException(OrderServiceException.OrderServiceErrorType.INSUFFICIENT_STOCK);
+```
+
+```java
+// 上游 Cis Service
+        try {
+            frs = orderFeign.checkout(frq);
+        } catch (FeignException e) {
+            log.info(e.getMessage());
+
+            // 商品存貨不足
+            if (e.contentUTF8().contains("OD00007")) {
+                throw new CisPortalException(CisPortalException.CisPortalErrorType.INSUFFICIENT_STOCK);
+            }
+
+            throw new CisPortalException(CisPortalException.CisPortalErrorType.STORE_CLIENT_FAIL);
+        }
+
+        OrderCheckoutRs data = frs.getData();
+```
+
+前端在 ElMessage 內處理
+
+```typescript
+  } catch (error: any) {
+
+    if (error.response?.data?.responseCode === 'CIS00004') {
+      ElMessage.error('商品庫存不足，請調整數量後重試')
+    } else {
+      ElMessage.error('訂單建立失敗：' + (error.response?.data?.message || error.message))
+    }
+  }
+```
+
+---
+
 > 推薦下一篇: [Unit Test](/spec/common/unit-test.md)
