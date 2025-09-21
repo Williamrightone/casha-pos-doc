@@ -2,7 +2,7 @@
 
 關於壓力測試, 會注重於在特定情境之下, 系統能夠運行的極限。其中比較費工的點分為事前的準備, 以及 TestCase 的定義, 這些內容都需要在執行之前有完善的計畫。
 
-## 1. 容量/基準（Baseline + Capacity）測試
+## 1. Scan Menu 容量/基準（Baseline + Capacity）測試
 
 > 目標：在多分店 open model 下，Scan→Menu（讀路徑)，量出系統在固定資源上的可穩定 RPS，並給出 p50/p95/p99 SLA。
 
@@ -418,3 +418,75 @@ Redis cache 菜單 refresh 效能表現延遲在低毫秒級，即便在 800 並
      * 若要往 500–1000 QPS scale out，可考慮水平擴容 cis-service Pod。
 
 ---
+
+## 下單的 Baseline + Capacity
+
+> 目標：在多分店 open model 下，Scan → Menu → 下單，量出系統在固定資源上的可穩定 RPS，並給出 p50/p95/p99 SLA。
+
+> 輸出：每一階段（100/200/400/600/800 RPS）的 p50/p95/p99、錯誤率、依賴服務指標；結論（穩定承載 RPS 與建議 SLA）。
+
+Baseline:
+
+* 每店 10 個商品
+* 每店總可銷售量 = 725（10 個商品, 加總 725 個可銷售量, 所以 10 間店 = 10 * 725 = 7,250 件庫存）
+* 每位用戶下單 2–3 個商品，每個商品 qty=1
+
+> 整個測試跑完（總 2100 users）大約會產生 5,250 筆商品消耗。
+
+用戶下單利用 token 的數量做兩種測試組合：
+
+* 多分店 (50 間)：驗證性能, 保證 800 users 下單後大部分商品仍可買到, 測 latency 與 Error%。。
+* 少分店（7 間）：驗證正確性, 保證在 600–800 users 階段會有商品賣光, 測正確拒絕 + menu 更新 + 無 oversell。
+
+### 性能 SLA baseline
+
+保證 800 users 下單後大部分商品仍可買到 → 測 latency 與 Error%。
+
+> 模擬真實客戶行為：掃碼 → 查詢座位 → 2~3 次菜單刷新 → 下單 → 模擬付款回調
+
+> 評估在 100 / 200 / 400 / 600 / 800 users ramp 下，系統端到端的響應時間 (p50/p95/p99)、吞吐量、正確率，並觀察服務資源利用率。
+
+#### JMeter 結果分析
+
+* 正確率：所有請求 Error % = 0，代表測試期間系統穩定，沒有出現超賣或異常錯誤。
+* MenuRefresh：量最大，平均 16 ms，p95 < 30 ms，非常穩定，說明 Redis 菜單快取效果良好。
+* ResolveSeat：p95 ≈ 112 ms，偏高於 MenuRefresh，合理，因為牽涉到 DB/狀態解析。
+* CreateOrder：平均 129 ms，p95 ≈ 255 ms，p99 ≈ 394 ms，符合「下單流程複雜度較高」的預期（DB 寫入、庫存檢查、Outbox Event）。
+* MockCallback：平均 54 ms，p95 ≈ 106 ms，屬於輕量操作，沒有明顯瓶頸。
+
+<br>
+
+| Label        | #Samples | Error % | Avg (ms) | p90 (ms) | p95 (ms) | p99 (ms) | TPS   |
+| ------------ | -------- | ------- | -------- | -------- | -------- | -------- | ----- |
+| ResolveSeat  | 4200     | 0.0%    | 56.9     | 88.0     | 111.9    | 160.0    | 2.59  |
+| MenuRefresh  | 262,503  | 0.0%    | 16.3     | 22.0     | 29.0     | 92.0     | 134.8 |
+| CreateOrder  | 2,100    | 0.0%    | 129.1    | 211.0    | 255.0    | 394.0    | 1.30  |
+| MockCallback | 2,100    | 0.0%    | 53.9     | 85.0     | 106.0    | 149.0    | 1.30  |
+| **Total**    | 138,605  | 0.0%    | 19.2     | 20.0     | 26.0     | 77.0     | 71.1  |
+
+![Response Times Over Time](/asset/casha-order-baseline.png)
+
+#### Grafana / Prometheus 指標分析
+
+1. QPS by Service
+   * 峰值 QPS ≈ 130–140 req/s（主要來自 cis-service）。
+   * 其他服務 (order-service, store-service, gateway-service) 的 QPS 在 20–40 左右，負載均衡。
+
+2. p95 Latency
+   * cis-service（包含 seat/resolve + menu/active）p95 < 100 ms
+   * order-service p95 在 100–150 ms，對應下單的複雜度
+   * 整體都維持在 200 ms 以內，滿足大部分 SLA 要求
+
+3. CPU / Heap
+   * CPU：單服務峰值 < 6%，資源充足，說明目前測試負載遠低於硬體上限
+   * Heap：波動 1.0%–1.7%，GC 無異常尖峰，表示記憶體健康
+   * Redis：Ops/sec 峰值 ≈ 600 ops，記憶體 < 3 MiB，非常輕鬆
+
+![Grafana](/asset/casha-order-baseline-grafana.png)
+
+#### 結論
+
+在 800 同時用戶的模擬情境下，系統可穩定承載 130 tps，整體錯誤率為 0，p95 延遲在 300 ms 以內
+
+---
+
