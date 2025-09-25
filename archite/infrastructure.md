@@ -11,7 +11,6 @@
 - **Nginx**：負責靜態資源的存取與 API 反向代理，對外提供 `80/443` 端口。
 - **MinIO**：作為物件存儲服務，S3 API 相容，提供檔案存取功能。
 - **管理工具**：
-  - **WinSCP**：連線至 VM，進行 SFTP 文件傳輸。
   - **DBeaver**：資料庫管理工具，連線 MySQL。
   - **RedisInsight**：管理與監控 Redis。
   - **Browser**：管理者透過瀏覽器存取 Grafana 與 Jaeger 等可視化服務。
